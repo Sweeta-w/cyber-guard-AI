@@ -191,7 +191,7 @@ Situation: {situation}
 Additional Context: {extra_context}"""
     
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
@@ -219,7 +219,7 @@ def analyze_pc_health(symptoms_list):
 - {symptoms_text}"""
     
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model= "openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
