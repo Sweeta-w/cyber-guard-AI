@@ -61,7 +61,7 @@ st.markdown("""
         font-weight: 600;
     }
 </style>
-""", unsafe_allow_html=unsafe_allow_html)
+""", unsafe_allow_html=True)
 
 # Sidebar Configuration
 with st.sidebar:
@@ -186,9 +186,9 @@ def generate_account_recovery_guide(platform, situation, extra_context):
     - Bullet points on securing the account long-term.
     """
     
-    user_prompt = f"Platform/Service: {platform}
+    user_prompt = f"""Platform/Service: {platform}
 Situation: {situation}
-Additional Context: {extra_context}"
+Additional Context: {extra_context}"""
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -214,9 +214,9 @@ def analyze_pc_health(symptoms_list):
     4. **When to Seek Professional Repair**
     """
     
-    user_prompt = f"Reported PC Symptoms:
-- " + "
-- ".join(symptoms_list)
+    symptoms_text = "\n- ".join(symptoms_list)
+    user_prompt = f"""Reported PC Symptoms:
+- {symptoms_text}"""
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
