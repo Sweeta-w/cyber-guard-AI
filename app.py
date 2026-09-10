@@ -148,11 +148,11 @@ def analyze_threat_with_groq(user_input, heuristics):
     }
     """
     
-    prompt = f"User Input to Analyze:
-"""{user_input}"""
+    prompt = f"""User Input to Analyze:
+{user_input}
 
 Pre-extracted Heuristic Flags:
-{json.dumps(heuristics)}"
+{json.dumps(heuristics)}"""
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
