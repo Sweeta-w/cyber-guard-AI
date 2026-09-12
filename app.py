@@ -8,69 +8,84 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-# 1. Page Configuration
+# 1. Page Setup
 st.set_page_config(
     page_title="CyberGuard AI",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# 2. Minimalist Custom CSS
+# 2. Modern Minimalist CSS (High-Contrast & Clean Cards)
 st.markdown("""
 <style>
-    /* Global Minimal Theme */
+    /* App Canvas */
     .stApp {
-        background-color: #FAFAFA;
+        background-color: #F8FAFC;
+        color: #0F172A;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    .main-title {
-        font-size: 1.8rem;
+    
+    /* Header Styling */
+    .brand-title {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #0F172A;
+        letter-spacing: -0.02em;
+        margin-bottom: 4px;
+    }
+    .brand-subtitle {
+        font-size: 1.0rem;
+        color: #475569;
+        margin-bottom: 30px;
+    }
+
+    /* Minimal Card Box */
+    .feature-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .card-title {
+        font-size: 1.1rem;
         font-weight: 700;
         color: #0F172A;
-        margin-bottom: 2px;
+        margin-bottom: 8px;
     }
-    .sub-title {
-        font-size: 0.95rem;
-        color: #64748B;
-        margin-bottom: 20px;
+    .card-desc {
+        font-size: 0.9rem;
+        color: #475569;
+        line-height: 1.5;
     }
-    /* Clean Sidebar */
-    section[data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #F1F5F9;
-    }
-    /* Minimal Card Styles */
-    .metric-card {
-        background: #FFFFFF;
-        padding: 15px;
+
+    /* Clean Buttons */
+    .stButton>button {
         border-radius: 8px;
-        border: 1px solid #E2E8F0;
-        text-align: center;
+        font-weight: 600;
+        border: none;
     }
 </style>
 """, unsafe_allow_html=True)
 
 MODEL_NAME = "openai/gpt-oss-120b"
 
-# 3. Sidebar Configuration
+# API Key Handling (Sidebar / Secrets)
+api_key_from_secrets = st.secrets.get("GROQ_API_KEY", "")
 with st.sidebar:
-    st.markdown("### 🛡️ **CyberGuard AI**")
-    st.caption("Minimalist AI Cybersecurity & Recovery Engine")
-    st.divider()
-    
-    api_key_from_secrets = st.secrets.get("GROQ_API_KEY", "")
+    st.markdown("### ⚙️ Engine Settings")
     if api_key_from_secrets:
         groq_api_key = api_key_from_secrets
-        st.success("API Key Active", icon="✅")
+        st.success("API Key Loaded", icon="✅")
     else:
-        groq_api_key = st.text_input("Groq / OpenAI Key:", type="password")
-        if not groq_api_key:
-            st.warning("Enter API Key to run engine.")
+        groq_api_key = st.text_input("Enter Groq API Key:", type="password")
 
 client = Groq(api_key=groq_api_key) if groq_api_key else None
 
-# 4. One-Time Cached RAG Engine Initialization
-@st.cache_resource(show_spinner="Indexing Security Knowledge Base...")
+# 3. One-Time Cached RAG Initialization
+@st.cache_resource(show_spinner="Loading Security Knowledge Base...")
 def initialize_rag():
     pdf_filename = "cyber_security_guide.pdf"
     chunks = []
@@ -86,10 +101,9 @@ def initialize_rag():
             chunks.append(raw_text[i:i+chunk_size])
     else:
         chunks = [
-            "WhatsApp Recovery: Re-install app, enter phone number, request SMS OTP. Enable 2-step verification PIN.",
-            "Gmail Compromise: Go to Security -> Recent Activity -> Log out all devices. Change password immediately.",
-            "Phishing Indicators: Check domain typos, raw IP links, unexpected attachments, and high urgency messaging.",
-            "Malware Symptoms: High CPU usage on idle, unauthorized extension installs, disabled Windows Defender."
+            "WhatsApp Security: Enable 2-Step Verification PIN immediately. Never share SMS OTP with anyone.",
+            "Gmail Security: Remove unknown logged-in devices under Google Account -> Security -> Recent Activity.",
+            "Phishing Detection: Beware of urgent messages asking for verification on non-official domains or raw IP links."
         ]
     
     embedder = SentenceTransformer('all-MiniLM-L6-v2')
@@ -112,7 +126,6 @@ def query_rag(query):
             matched.append(pdf_chunks[idx])
     return "\n".join(matched) if matched else None
 
-# 5. Core AI Helper Function
 def get_concise_response(system_prompt, user_messages):
     messages = [{"role": "system", "content": system_prompt}] + user_messages
     response = client.chat.completions.create(
@@ -122,77 +135,137 @@ def get_concise_response(system_prompt, user_messages):
     )
     return response.choices[0].message.content
 
-# 6. Session State Initialization for Chat Tabs
+# Session State for Clean Multi-Turn Dialogues
 if "detector_messages" not in st.session_state:
     st.session_state.detector_messages = []
 if "recovery_messages" not in st.session_state:
     st.session_state.recovery_messages = []
 
-# 7. UI Main Structure
-st.markdown('<div class="main-title">CyberGuard AI & Emergency Hub</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Instant Threat Diagnostics • Conversational RAG Account Recovery</div>', unsafe_allow_html=True)
+# --- Header ---
+st.markdown('<div class="brand-title">CyberGuard AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="brand-subtitle">Intelligent Threat Prevention & Emergency Recovery Engine</div>', unsafe_allow_html=True)
 
 if not client:
-    st.info("Please enter your API Key in the sidebar to start.")
+    st.info("👈 Please enter your Groq API Key in the sidebar to activate the AI platform.")
     st.stop()
 
-tab1, tab2, tab3, tab4 = st.tabs([
+# --- Main Navigation Tabs ---
+tab_home, tab_scanner, tab_recovery, tab_audit = st.tabs([
+    "🏠 Prevention Guide", 
     "🔍 Threat Scanner", 
-    "🚨 RAG Recovery Chat", 
-    "💻 System Audit", 
-    "📊 Safety Index"
+    "🚨 Recovery Assistant", 
+    "💻 System Health Audit"
 ])
+
+# ==========================================
+# DEFAULT PAGE: TAB HOME (PREVENTION & OVERVIEW)
+# ==========================================
+with tab_home:
+    st.markdown("### 🛡️ Essential Steps to Prevent Account Hacks")
+    st.caption("Follow these core baseline security protocols to secure your accounts before an attack occurs.")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="card-title">1. Enable 2-Factor Auth</div>
+            <div class="card-desc">
+                Turn on 2FA (Authenticator App / SMS) on WhatsApp, Gmail, and Social Media. This prevents 99% of unauthorized logins.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="card-title">2. Use Password Managers</div>
+            <div class="card-desc">
+                Avoid reusing the same password across platforms. Use Bitwarden or 1Password to generate strong unique keys.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="card-title">3. Audit Active Devices</div>
+            <div class="card-desc">
+                Check active sessions in WhatsApp settings and Google Account monthly. Log out of unfamiliar devices immediately.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+    
+    st.markdown("### 🚀 Module Overview")
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("""
+        **🔍 Threat Scanner**  
+        Paste any suspicious link, SMS, or email to get instant risk scoring and phishing analysis.
+        """)
+    with col_b:
+        st.markdown("""
+        **🚨 Recovery Assistant**  
+        Conversational RAG bot that guides you step-by-step if your WhatsApp, Gmail, or accounts are hacked.
+        """)
+    with col_c:
+        st.markdown("""
+        **💻 System Health Audit**  
+        Check computer infection symptoms to diagnose malware or unauthorized background access.
+        """)
 
 # ==========================================
 # TAB 1: THREAT SCANNER (CONVERSATIONAL)
 # ==========================================
-with tab1:
-    st.caption("Paste a link, SMS, or suspicious text to analyze.")
+with tab_scanner:
+    st.markdown("#### 🔍 Real-Time Threat & Phishing Inspector")
+    st.caption("Paste a link, SMS, or email body to evaluate potential scam indicators.")
     
-    # Display Chat History
     for msg in st.session_state.detector_messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
             
-    if prompt := st.chat_input("Paste URL or suspicious email/SMS here..."):
+    if prompt := st.chat_input("Paste URL or suspicious text here..."):
         st.session_state.detector_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.write(prompt)
             
         system_prompt = """
         You are a concise Cybersecurity Scanner. 
-        Analyze the input for phishing, scams, or malware.
-        Provide a SHORT, direct answer with strictly:
-        1. Threat Level (Safe/Low/Medium/High/Critical)
-        2. Threat Type
-        3. 2-3 Bullet points explaining why
-        4. Immediate action (max 2 bullets)
-        Keep total text under 100 words. Avoid generic fluff.
+        Analyze the input for phishing or malware.
+        Format response strictly as:
+        - **Threat Level:** Safe / Low / Medium / High / Critical
+        - **Category:** Phishing / Scam / Safe
+        - **Why:** 2 short bullet points explaining why.
+        - **Action:** 1-2 clear bullet points.
+        Keep total output under 80 words. No long explanations.
         """
         
         with st.chat_message("assistant"):
-            with st.spinner("Scanning..."):
+            with st.spinner("Analyzing..."):
                 reply = get_concise_response(system_prompt, st.session_state.detector_messages)
                 st.write(reply)
                 st.session_state.detector_messages.append({"role": "assistant", "content": reply})
 
 # ==========================================
-# TAB 2: RAG RECOVERY CHATBOX (MULTI-TURN)
+# TAB 2: RECOVERY ASSISTANT (CONVERSATIONAL RAG)
 # ==========================================
-with tab2:
-    st.caption("Ask anything about hacked accounts or security issues. Answers pull from the PDF manual first.")
+with tab_recovery:
+    st.markdown("#### 🚨 RAG-Powered Incident Recovery Assistant")
+    st.caption("Ask questions about compromised accounts. Answers reference the PDF manual first.")
     
-    # Reset Chat Button
-    if st.button("Clear Conversation", type="secondary"):
+    if st.button("Clear Chat History", type="secondary"):
         st.session_state.recovery_messages = []
         st.rerun()
 
-    # Display Recovery Chat History
     for msg in st.session_state.recovery_messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
             
-    if user_query := st.chat_input("e.g., My WhatsApp is hacked, what should I do now?"):
+    if user_query := st.chat_input("e.g., My WhatsApp account was hacked today, what should I do?"):
         st.session_state.recovery_messages.append({"role": "user", "content": user_query})
         with st.chat_message("user"):
             st.write(user_query)
@@ -201,62 +274,49 @@ with tab2:
         
         if retrieved_context:
             system_prompt = f"""
-            You are CyberGuard Emergency Support. 
+            You are CyberGuard Support Specialist. 
             Answer strictly using the retrieved PDF context below.
             Prefix response with: "📄 **From Security Manual:**"
             Context: {retrieved_context}
-            Rule: Keep instructions clear, bulleted, step-by-step, and under 120 words.
+            Rule: Provide step-by-step instructions under 100 words.
             """
         else:
             system_prompt = """
-            You are CyberGuard Emergency Support. 
+            You are CyberGuard Support Specialist. 
             The PDF manual does not contain specific info on this query.
-            Prefix response with: "⚠️ *Information not in PDF manual, general recovery steps:* "
-            Rule: Provide immediate, short, non-technical recovery steps under 120 words.
+            Prefix response with: "⚠️ *Info not in PDF manual. General steps:* "
+            Rule: Provide clear emergency recovery steps under 100 words.
             """
             
         with st.chat_message("assistant"):
-            with st.spinner("Searching manual & generating response..."):
+            with st.spinner("Retrieving guide..."):
                 reply = get_concise_response(system_prompt, st.session_state.recovery_messages)
                 st.write(reply)
                 st.session_state.recovery_messages.append({"role": "assistant", "content": reply})
 
 # ==========================================
-# TAB 3: SYSTEM AUDIT
+# TAB 3: SYSTEM HEALTH AUDIT
 # ==========================================
-with tab3:
-    st.write("Select current symptoms observed on your computer:")
+with tab_audit:
+    st.markdown("#### 💻 PC / Laptop Malware Diagnostic")
+    st.caption("Select observed symptoms to evaluate if your device is compromised.")
     
-    s1 = st.checkbox("High CPU/Disk usage when idle")
-    s2 = st.checkbox("Pop-ups or unfamiliar browser extensions")
-    s3 = st.checkbox("Antivirus or Firewall disabled automatically")
-    s4 = st.checkbox("Command prompt windows flashing on boot")
+    c1 = st.checkbox("High CPU or RAM usage when idle")
+    c2 = st.checkbox("Browser redirects, unknown extensions, or pop-ups")
+    c3 = st.checkbox("Windows Defender or Antivirus turned off automatically")
+    c4 = st.checkbox("Terminal or Command Prompt windows flash briefly on startup")
     
-    selected = [s for s, checked in zip(
-        ["High CPU", "Pop-ups/Extensions", "Disabled Antivirus", "Terminal Flashes"], 
-        [s1, s2, s3, s4]
-    ) if checked]
+    selected_symptoms = []
+    if c1: selected_symptoms.append("High idle CPU")
+    if c2: selected_symptoms.append("Browser pop-ups/extensions")
+    if c3: selected_symptoms.append("Disabled antivirus")
+    if c4: selected_symptoms.append("Terminal window flashes")
     
-    if st.button("Diagnose System", type="primary"):
-        if selected:
-            sys_prompt = "You are a PC Security Auditor. Give a concise diagnostic rating and 3 plain-English cleanup steps. Keep response under 100 words."
-            user_msg = [{"role": "user", "content": f"Symptoms detected: {', '.join(selected)}"}]
-            with st.spinner("Analyzing..."):
+    if st.button("Run Quick Diagnostic", type="primary"):
+        if selected_symptoms:
+            sys_prompt = "You are a PC Security Specialist. Give a 1-sentence risk rating and 3 concise cleanup steps. Keep total text under 80 words."
+            user_msg = [{"role": "user", "content": f"Symptoms: {', '.join(selected_symptoms)}"}]
+            with st.spinner("Evaluating symptoms..."):
                 st.markdown(get_concise_response(sys_prompt, user_msg))
         else:
-            st.success("No threat symptoms selected. System appears clean!")
-
-# ==========================================
-# TAB 4: SAFETY SCORECARD
-# ==========================================
-with tab4:
-    st.write("Check your active security habits:")
-    q1 = st.checkbox("Password Manager for unique passwords")
-    q2 = st.checkbox("2-Factor Authentication (2FA) enabled on primary accounts")
-    q3 = st.checkbox("OS and apps kept up to date")
-    
-    score = sum([q1, q2, q3]) * 33.33
-    st.metric("Security Index Score", f"{int(score)}%")
-    
-    if score < 100:
-        st.info("Tip: Enable 2FA and unique passwords on all primary accounts to reach 100%.")
+            st.success("✅ No threat symptoms selected. System appears healthy!")
