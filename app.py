@@ -13,16 +13,16 @@ st.set_page_config(
     page_title="CyberGuard AI",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# 2. Modern Minimalist CSS (High-Contrast & Clean Cards)
+# 2. Restored Modern Dark Theme CSS (High Contrast & Clear Inputs)
 st.markdown("""
 <style>
-    /* App Canvas */
+    /* Global App Canvas (Dark Background) */
     .stApp {
-        background-color: #F8FAFC;
-        color: #0F172A;
+        background-color: #0F172A;
+        color: #F8FAFC;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
@@ -30,49 +30,76 @@ st.markdown("""
     .brand-title {
         font-size: 2.2rem;
         font-weight: 800;
-        color: #0F172A;
+        color: #F8FAFC;
         letter-spacing: -0.02em;
         margin-bottom: 4px;
     }
     .brand-subtitle {
         font-size: 1.0rem;
-        color: #475569;
-        margin-bottom: 30px;
+        color: #94A3B8;
+        margin-bottom: 25px;
     }
 
-    /* Minimal Card Box */
+    /* Minimalist Card Box (Dark Glassmorphism) */
     .feature-card {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
+        background: #1E293B;
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     }
     .card-title {
         font-size: 1.1rem;
         font-weight: 700;
-        color: #0F172A;
+        color: #38BDF8;
         margin-bottom: 8px;
     }
     .card-desc {
         font-size: 0.9rem;
-        color: #475569;
+        color: #CBD5E1;
         line-height: 1.5;
     }
 
-    /* Clean Buttons */
-    .stButton>button {
+    /* Fix Navigation Tabs (High Contrast Visibility) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #1E293B;
+        padding: 8px;
+        border-radius: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 45px;
+        white-space: pre-wrap;
+        background-color: transparent;
         border-radius: 8px;
+        color: #94A3B8 !important;
         font-weight: 600;
-        border: none;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #38BDF8 !important;
+    }
+
+    /* Fix Input Fields & Chat Text Colors */
+    .stTextInput input, .stTextArea textarea, .stChatInput input {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border: 1px solid #475569 !important;
+        border-radius: 8px;
+    }
+    
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {
+        background-color: #1E293B;
+        border-right: 1px solid #334155;
     }
 </style>
 """, unsafe_allow_html=True)
 
 MODEL_NAME = "openai/gpt-oss-120b"
 
-# API Key Handling (Sidebar / Secrets)
+# API Key Handling
 api_key_from_secrets = st.secrets.get("GROQ_API_KEY", "")
 with st.sidebar:
     st.markdown("### ⚙️ Engine Settings")
@@ -135,14 +162,14 @@ def get_concise_response(system_prompt, user_messages):
     )
     return response.choices[0].message.content
 
-# Session State for Clean Multi-Turn Dialogues
+# Session State for Clean Conversations
 if "detector_messages" not in st.session_state:
     st.session_state.detector_messages = []
 if "recovery_messages" not in st.session_state:
     st.session_state.recovery_messages = []
 
 # --- Header ---
-st.markdown('<div class="brand-title">CyberGuard AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="brand-title">🛡️ CyberGuard AI</div>', unsafe_allow_html=True)
 st.markdown('<div class="brand-subtitle">Intelligent Threat Prevention & Emergency Recovery Engine</div>', unsafe_allow_html=True)
 
 if not client:
@@ -161,8 +188,8 @@ tab_home, tab_scanner, tab_recovery, tab_audit = st.tabs([
 # DEFAULT PAGE: TAB HOME (PREVENTION & OVERVIEW)
 # ==========================================
 with tab_home:
-    st.markdown("### 🛡️ Essential Steps to Prevent Account Hacks")
-    st.caption("Follow these core baseline security protocols to secure your accounts before an attack occurs.")
+    st.markdown("### 🛡️ Core Steps to Protect Your Accounts")
+    st.caption("Baseline protocols to secure your accounts before an attack occurs.")
     
     col1, col2, col3 = st.columns(3)
     
@@ -171,7 +198,7 @@ with tab_home:
         <div class="feature-card">
             <div class="card-title">1. Enable 2-Factor Auth</div>
             <div class="card-desc">
-                Turn on 2FA (Authenticator App / SMS) on WhatsApp, Gmail, and Social Media. This prevents 99% of unauthorized logins.
+                Enable 2FA (Authenticator App / SMS) on WhatsApp, Gmail, and Social Media to block 99% of unauthorized logins.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -181,7 +208,7 @@ with tab_home:
         <div class="feature-card">
             <div class="card-title">2. Use Password Managers</div>
             <div class="card-desc">
-                Avoid reusing the same password across platforms. Use Bitwarden or 1Password to generate strong unique keys.
+                Avoid password reuse across platforms. Use Bitwarden or 1Password to generate strong unique security keys.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -191,7 +218,7 @@ with tab_home:
         <div class="feature-card">
             <div class="card-title">3. Audit Active Devices</div>
             <div class="card-desc">
-                Check active sessions in WhatsApp settings and Google Account monthly. Log out of unfamiliar devices immediately.
+                Review logged-in sessions in WhatsApp settings and Google Account monthly. Revoke unfamiliar devices immediately.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -209,12 +236,12 @@ with tab_home:
     with col_b:
         st.markdown("""
         **🚨 Recovery Assistant**  
-        Conversational RAG bot that guides you step-by-step if your WhatsApp, Gmail, or accounts are hacked.
+        Conversational RAG bot that guides you step-by-step if your WhatsApp, Gmail, or accounts are compromised.
         """)
     with col_c:
         st.markdown("""
         **💻 System Health Audit**  
-        Check computer infection symptoms to diagnose malware or unauthorized background access.
+        Check computer symptoms to diagnose malware infections or unauthorized background activity.
         """)
 
 # ==========================================
@@ -245,7 +272,7 @@ with tab_scanner:
         """
         
         with st.chat_message("assistant"):
-            with st.spinner("Analyzing..."):
+            with st.spinner("Analyzing threat..."):
                 reply = get_concise_response(system_prompt, st.session_state.detector_messages)
                 st.write(reply)
                 st.session_state.detector_messages.append({"role": "assistant", "content": reply})
