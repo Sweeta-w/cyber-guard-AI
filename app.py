@@ -1,417 +1,262 @@
 import streamlit as st
 import json
 import re
+import os
 from groq import Groq
+from pypdf import PdfReader
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
 
-# Page Configuration
+# 1. Page Configuration
 st.set_page_config(
-    page_title="CyberGuard AI & Recovery Hub",
+    page_title="CyberGuard AI",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for UI polish
+# 2. Minimalist Custom CSS
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
+    /* Global Minimal Theme */
+    .stApp {
+        background-color: #FAFAFA;
+    }
+    .main-title {
+        font-size: 1.8rem;
         font-weight: 700;
-        color: #1E293B;
-        margin-bottom: 0px;
+        color: #0F172A;
+        margin-bottom: 2px;
     }
-    .sub-header {
-        font-size: 1.0rem;
+    .sub-title {
+        font-size: 0.95rem;
         color: #64748B;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
     }
-    .stCard {
-        background-color: #F8FAFC;
-        padding: 20px;
-        border-radius: 10px;
+    /* Clean Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 1px solid #F1F5F9;
+    }
+    /* Minimal Card Styles */
+    .metric-card {
+        background: #FFFFFF;
+        padding: 15px;
+        border-radius: 8px;
         border: 1px solid #E2E8F0;
-        margin-bottom: 15px;
-    }
-    .risk-badge-critical {
-        background-color: #FEE2E2;
-        color: #991B1B;
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-weight: 600;
-    }
-    .risk-badge-high {
-        background-color: #FFEDD5;
-        color: #9A3412;
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-weight: 600;
-    }
-    .risk-badge-medium {
-        background-color: #FEF3C7;
-        color: #92400E;
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-weight: 600;
-    }
-    .risk-badge-low {
-        background-color: #DCFCE7;
-        color: #166534;
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-weight: 600;
+        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration
+MODEL_NAME = "openai/gpt-oss-120b"
+
+# 3. Sidebar Configuration
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/shield--v1.png", width=64)
-    st.title("CyberGuard AI")
-    st.markdown("**Version:** 1.0.0")
-    st.markdown("**Engine:** Groq (Llama-3.3-70b)")
+    st.markdown("### 🛡️ **CyberGuard AI**")
+    st.caption("Minimalist AI Cybersecurity & Recovery Engine")
     st.divider()
     
-    # API Key Input Handling
     api_key_from_secrets = st.secrets.get("GROQ_API_KEY", "")
     if api_key_from_secrets:
         groq_api_key = api_key_from_secrets
-        st.success("✅ Groq API Key loaded from Secrets")
+        st.success("API Key Active", icon="✅")
     else:
-        groq_api_key = st.text_input("Enter Groq API Key:", type="password", help="Get your key from console.groq.com")
+        groq_api_key = st.text_input("Groq / OpenAI Key:", type="password")
         if not groq_api_key:
-            st.warning("⚠️ Please provide a Groq API Key to proceed.")
+            st.warning("Enter API Key to run engine.")
 
-    st.divider()
-    st.markdown("### Quick Emergency Help")
-    st.info("If your bank details or primary email have been stolen, disconnect your Wi-Fi immediately and call your bank's helpline.")
-
-# Initialize Groq Client
 client = Groq(api_key=groq_api_key) if groq_api_key else None
 
-# --- Helper Functions ---
-def extract_url_heuristics(text):
-    """Local Python heuristic checks for suspicious URL patterns."""
-    findings = []
+# 4. One-Time Cached RAG Engine Initialization
+@st.cache_resource(show_spinner="Indexing Security Knowledge Base...")
+def initialize_rag():
+    pdf_filename = "cyber_security_guide.pdf"
+    chunks = []
     
-    # Extract URLs from text
-    urls = re.findall(r'https?://[^\s]+', text)
-    if not urls:
-        urls = re.findall(r'www\.[^\s]+', text)
-        
-    for url in urls:
-        # Check IP address usage
-        if re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', url):
-            findings.append("Uses raw IP address instead of a standard domain name.")
-        # Check suspicious TLDs
-        suspicious_tlds = ['.xyz', '.top', '.work', '.cc', '.tk', '.ml', '.ga', '.cf', '.gq', '.zip', '.mov']
-        if any(url.lower().endswith(tld) or tld + "/" in url.lower() for tld in suspicious_tlds):
-            findings.append("Uses a high-risk suspicious top-level domain (TLD).")
-        # Check excessive length
-        if len(url) > 70:
-            findings.append("URL length is unusually long (>70 characters).")
-        # Check '@' symbol redirect trick
-        if "@" in url:
-            findings.append("Contains '@' symbol, often used to bypass browser URL checks.")
-        # Check excessive subdomains/hyphens
-        if url.count('-') > 3:
-            findings.append("Multiple hyphens detected in domain name.")
-        if url.count('.') > 4:
-            findings.append("Excessive subdomains present.")
-            
-    return findings, urls
-
-def analyze_threat_with_groq(user_input, heuristics):
-    """Passes user input and local heuristics to Groq for structured JSON risk assessment."""
-    system_prompt = """
-    You are CyberGuard AI, an elite cybersecurity threat analyst.
-    Analyze the user's input (suspicious link, email, SMS, or scam message) alongside pre-detected heuristic findings.
-    
-    Your task is to provide a comprehensive security evaluation.
-    MUST respond strictly in valid JSON format with no markdown wrappers outside the JSON:
-    {
-        "risk_level": "Low" | "Medium" | "High" | "Critical",
-        "threat_type": "Phishing" | "Financial Scam" | "Malware Link" | "Social Engineering" | "Safe / Legitimate",
-        "confidence_score": 85,
-        "summary": "Short 1-2 sentence executive summary of the threat.",
-        "reasons": [
-            "Specific reason 1 detailing why this is suspicious or safe.",
-            "Specific reason 2."
-        ],
-        "tactics_detected": [
-            "Urgency / Fear tactic",
-            "Brand Impersonation"
-        ],
-        "immediate_actions": [
-            "Do not click any links or open attachments.",
-            "Report and block the sender."
+    if os.path.exists(pdf_filename):
+        reader = PdfReader(pdf_filename)
+        raw_text = ""
+        for page in reader.pages:
+            t = page.extract_text()
+            if t: raw_text += t + "\n"
+        chunk_size = 400
+        for i in range(0, len(raw_text), chunk_size):
+            chunks.append(raw_text[i:i+chunk_size])
+    else:
+        chunks = [
+            "WhatsApp Recovery: Re-install app, enter phone number, request SMS OTP. Enable 2-step verification PIN.",
+            "Gmail Compromise: Go to Security -> Recent Activity -> Log out all devices. Change password immediately.",
+            "Phishing Indicators: Check domain typos, raw IP links, unexpected attachments, and high urgency messaging.",
+            "Malware Symptoms: High CPU usage on idle, unauthorized extension installs, disabled Windows Defender."
         ]
-    }
-    """
     
-    prompt = f"""User Input to Analyze:
-{user_input}
+    embedder = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = embedder.encode(chunks)
+    
+    dimension = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dimension)
+    index.add(np.array(embeddings).astype('float32'))
+    
+    return embedder, index, chunks
 
-Pre-extracted Heuristic Flags:
-{json.dumps(heuristics)}"""
-    
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"}
-    )
-    return json.loads(response.choices[0].message.content)
+embedder, vector_index, pdf_chunks = initialize_rag()
 
-def generate_account_recovery_guide(platform, situation, extra_context):
-    """Generates step-by-step account recovery guidance."""
-    system_prompt = """
-    You are an Emergency Incident Response Specialist.
-    A non-technical user has had their account compromised or locked out.
-    Provide an extremely clear, reassuring, zero-jargon, step-by-step recovery guide.
-    Structure your response using clean Markdown formatting:
-    
-    ### 🚨 Emergency Response Checklist
-    #### Phase 1: First 5 Minutes (Immediate Lockout & Containment)
-    - [ ] Step 1
-    - [ ] Step 2
-    
-    #### Phase 2: Next 24 Hours (Recovery & Support Escalation)
-    - Step 1
-    - Step 2
-    
-    #### Phase 3: Post-Incident Security Hardening
-    - Bullet points on securing the account long-term.
-    """
-    
-    user_prompt = f"""Platform/Service: {platform}
-Situation: {situation}
-Additional Context: {extra_context}"""
-    
+def query_rag(query):
+    query_vector = embedder.encode([query])
+    distances, indices = vector_index.search(np.array(query_vector).astype('float32'), k=2)
+    matched = []
+    for dist, idx in zip(distances[0], indices[0]):
+        if dist < 1.3:
+            matched.append(pdf_chunks[idx])
+    return "\n".join(matched) if matched else None
+
+# 5. Core AI Helper Function
+def get_concise_response(system_prompt, user_messages):
+    messages = [{"role": "system", "content": system_prompt}] + user_messages
     response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
+        model=MODEL_NAME,
+        messages=messages,
         temperature=0.2
     )
     return response.choices[0].message.content
 
-def analyze_pc_health(symptoms_list):
-    """Generates diagnostic feedback for PC/Laptop health."""
-    system_prompt = """
-    You are a PC Malware & Security Specialist.
-    Analyze the user-reported symptoms on their PC/Laptop and determine the likely threat level.
-    Provide actionable, non-destructive troubleshooting steps for non-technical users.
-    
-    Structure your response with:
-    1. **Estimated Threat Rating** (Clean / Suspicious / Likely Infected / Severe Breach)
-    2. **Analysis of Symptoms** (Why these symptoms occur)
-    3. **Step-by-Step Cleanup Protocol** (Safe Mode, Defender Scan, Task Scheduler check, Rogue Browser Extensions)
-    4. **When to Seek Professional Repair**
-    """
-    
-    symptoms_text = "\n- ".join(symptoms_list)
-    user_prompt = f"""Reported PC Symptoms:
-- {symptoms_text}"""
-    
-    response = client.chat.completions.create(
-        model= "openai/gpt-oss-120b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.2
-    )
-    return response.choices[0].message.content
+# 6. Session State Initialization for Chat Tabs
+if "detector_messages" not in st.session_state:
+    st.session_state.detector_messages = []
+if "recovery_messages" not in st.session_state:
+    st.session_state.recovery_messages = []
 
-# --- Main App Header ---
-st.markdown('<div class="main-header">🛡️ CyberGuard AI & Recovery Hub</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Intelligent Threat Detection • Emergency Account Recovery • PC Safety Audit</div>', unsafe_allow_html=True)
+# 7. UI Main Structure
+st.markdown('<div class="main-title">CyberGuard AI & Emergency Hub</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Instant Threat Diagnostics • Conversational RAG Account Recovery</div>', unsafe_allow_html=True)
 
 if not client:
-    st.warning("👈 Please enter your **Groq API Key** in the sidebar to activate the platform.")
+    st.info("Please enter your API Key in the sidebar to start.")
     st.stop()
 
-# --- Tab Layout ---
 tab1, tab2, tab3, tab4 = st.tabs([
-    "🔍 Threat Detector", 
-    "🚨 Hacked Account Recovery", 
-    "💻 PC / Laptop Health Audit", 
-    "📊 Prevention & Safety Scorecard"
+    "🔍 Threat Scanner", 
+    "🚨 RAG Recovery Chat", 
+    "💻 System Audit", 
+    "📊 Safety Index"
 ])
 
 # ==========================================
-# TAB 1: THREAT DETECTOR
+# TAB 1: THREAT SCANNER (CONVERSATIONAL)
 # ==========================================
 with tab1:
-    st.subheader("Analyze Suspicious Links, Emails, or SMS")
-    st.write("Paste suspicious content below. CyberGuard AI will scan link structures and evaluate scam indicators.")
+    st.caption("Paste a link, SMS, or suspicious text to analyze.")
     
-    # Sample Test Inputs Expander
-    with st.expander("🧪 Need test samples? Click to copy demo scenarios"):
-        st.code("Urgency Scam: URGENT: Your bank account is locked due to suspicious activity. Verify immediately at http://192.168.1.55/login-verify-account-security-update.xyz to prevent total lockout.", language="text")
-        st.code("Package Tracking Phishing: Your parcel delivery failed today. Track and reschedule your shipment now at http://express-logistics-tracking-update.top/package/89421", language="text")
-
-    user_input = st.text_area("Paste URL, email body, or message text:", height=130, placeholder="e.g., Dear user, your account has been suspended. Click http://...")
-    
-    if st.button("🔍 Analyze Threat Now", type="primary", use_container_width=True):
-        if user_input.strip():
-            with st.spinner("Analyzing message context & running heuristic checks..."):
-                heuristics, detected_urls = extract_url_heuristics(user_input)
-                result = analyze_threat_with_groq(user_input, heuristics)
-                
-                risk = result.get("risk_level", "Low")
-                threat_type = result.get("threat_type", "Unknown")
-                confidence = result.get("confidence_score", 0)
-                
-                st.divider()
-                
-                # Header Metrics
-                m_col1, m_col2, m_col3 = st.columns(3)
-                with m_col1:
-                    if risk == "Critical":
-                        st.markdown('### Threat Level: <span class="risk-badge-critical">CRITICAL</span>', unsafe_allow_html=True)
-                    elif risk == "High":
-                        st.markdown('### Threat Level: <span class="risk-badge-high">HIGH</span>', unsafe_allow_html=True)
-                    elif risk == "Medium":
-                        st.markdown('### Threat Level: <span class="risk-badge-medium">MEDIUM</span>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('### Threat Level: <span class="risk-badge-low">LOW / SAFE</span>', unsafe_allow_html=True)
-                with m_col2:
-                    st.metric("Threat Category", threat_type)
-                with m_col3:
-                    st.metric("AI Confidence Score", f"{confidence}%")
-                
-                st.markdown(f"**Executive Summary:** {result.get('summary', '')}")
-                st.write("")
-                
-                # Breakdown Columns
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown("### ⚠️ Why It's Dangerous / Suspicious")
-                    for reason in result.get("reasons", []):
-                        st.write(f"- {reason}")
-                        
-                    if result.get("tactics_detected"):
-                        st.markdown("**Social Engineering Tactics Detected:**")
-                        for tactic in result.get("tactics_detected", []):
-                            st.write(f"  • *{tactic}*")
-
-                with c2:
-                    st.markdown("### 🛡️ Recommended Immediate Actions")
-                    for action in result.get("immediate_actions", []):
-                        st.write(f"- {action}")
-                        
-                    if heuristics:
-                        st.markdown("**Local Python Heuristic Flags:**")
-                        for h in heuristics:
-                            st.write(f"  🚩 {h}")
-        else:
-            st.warning("Please paste some text or a URL to analyze.")
+    # Display Chat History
+    for msg in st.session_state.detector_messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+            
+    if prompt := st.chat_input("Paste URL or suspicious email/SMS here..."):
+        st.session_state.detector_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.write(prompt)
+            
+        system_prompt = """
+        You are a concise Cybersecurity Scanner. 
+        Analyze the input for phishing, scams, or malware.
+        Provide a SHORT, direct answer with strictly:
+        1. Threat Level (Safe/Low/Medium/High/Critical)
+        2. Threat Type
+        3. 2-3 Bullet points explaining why
+        4. Immediate action (max 2 bullets)
+        Keep total text under 100 words. Avoid generic fluff.
+        """
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Scanning..."):
+                reply = get_concise_response(system_prompt, st.session_state.detector_messages)
+                st.write(reply)
+                st.session_state.detector_messages.append({"role": "assistant", "content": reply})
 
 # ==========================================
-# TAB 2: HACKED ACCOUNT RECOVERY
+# TAB 2: RAG RECOVERY CHATBOX (MULTI-TURN)
 # ==========================================
 with tab2:
-    st.subheader("Hacked Account Step-by-Step Emergency Guide")
-    st.write("Select the compromised service and situation to get an immediate, plain-English recovery playbook.")
+    st.caption("Ask anything about hacked accounts or security issues. Answers pull from the PDF manual first.")
     
-    col_a, col_b = st.columns(2)
-    with col_a:
-        platform = st.selectbox(
-            "Select Compromised Platform:",
-            ["WhatsApp", "Gmail / Google Account", "Instagram / Facebook", "Banking / Payment App (Easypaisa/NayaPay/Bank)", "Primary Email Address"]
-        )
-    with col_b:
-        situation = st.selectbox(
-            "What best describes your situation?",
-            [
-                "I entered my password on a suspicious phishing link",
-                "Suddenly logged out & password was changed by hacker",
-                "Received unexpected 2FA OTP codes on my phone",
-                "Contacts are receiving scam messages sent from my account",
-                "Lost phone with logged-in accounts"
-            ]
-        )
+    # Reset Chat Button
+    if st.button("Clear Conversation", type="secondary"):
+        st.session_state.recovery_messages = []
+        st.rerun()
+
+    # Display Recovery Chat History
+    for msg in st.session_state.recovery_messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+            
+    if user_query := st.chat_input("e.g., My WhatsApp is hacked, what should I do now?"):
+        st.session_state.recovery_messages.append({"role": "user", "content": user_query})
+        with st.chat_message("user"):
+            st.write(user_query)
+            
+        retrieved_context = query_rag(user_query)
         
-    extra_context = st.text_input("Additional details (optional):", placeholder="e.g., Hacker changed the recovery email address to an unknown domain.")
-    
-    if st.button("🚨 Generate Emergency Recovery Plan", type="primary"):
-        with st.spinner("Generating emergency response checklist..."):
-            recovery_guide = generate_account_recovery_guide(platform, situation, extra_context)
-            st.markdown(recovery_guide)
+        if retrieved_context:
+            system_prompt = f"""
+            You are CyberGuard Emergency Support. 
+            Answer strictly using the retrieved PDF context below.
+            Prefix response with: "📄 **From Security Manual:**"
+            Context: {retrieved_context}
+            Rule: Keep instructions clear, bulleted, step-by-step, and under 120 words.
+            """
+        else:
+            system_prompt = """
+            You are CyberGuard Emergency Support. 
+            The PDF manual does not contain specific info on this query.
+            Prefix response with: "⚠️ *Information not in PDF manual, general recovery steps:* "
+            Rule: Provide immediate, short, non-technical recovery steps under 120 words.
+            """
+            
+        with st.chat_message("assistant"):
+            with st.spinner("Searching manual & generating response..."):
+                reply = get_concise_response(system_prompt, st.session_state.recovery_messages)
+                st.write(reply)
+                st.session_state.recovery_messages.append({"role": "assistant", "content": reply})
 
 # ==========================================
-# TAB 3: PC / LAPTOP HEALTH AUDIT
+# TAB 3: SYSTEM AUDIT
 # ==========================================
 with tab3:
-    st.subheader("PC / Laptop Security Symptom Diagnostic")
-    st.write("Check any unusual behavior your computer is currently exhibiting:")
+    st.write("Select current symptoms observed on your computer:")
     
-    sym1 = st.checkbox("System is unusually slow or CPU/Disk usage is at 100% when idle")
-    sym2 = st.checkbox("Unknown browser extensions, default search engine, or pop-ups appeared automatically")
-    sym3 = st.checkbox("Windows Defender, Firewall, or Antivirus is disabled and won't turn back on")
-    sym4 = st.checkbox("Command prompt or terminal windows flash briefly on screen upon startup")
-    sym5 = st.checkbox("Friends or colleagues report receiving automated spam/emails sent from my computer")
-    sym6 = st.checkbox("Files have turned into shortcut icons or have strange file extensions")
+    s1 = st.checkbox("High CPU/Disk usage when idle")
+    s2 = st.checkbox("Pop-ups or unfamiliar browser extensions")
+    s3 = st.checkbox("Antivirus or Firewall disabled automatically")
+    s4 = st.checkbox("Command prompt windows flashing on boot")
     
-    selected_symptoms = []
-    if sym1: selected_symptoms.append("High idle CPU/Disk usage")
-    if sym2: selected_symptoms.append("Unauthorized browser changes & pop-ups")
-    if sym3: selected_symptoms.append("Disabled antivirus / firewall")
-    if sym4: selected_symptoms.append("Brief terminal window flashes on boot")
-    if sym5: selected_symptoms.append("Outbound spam sent from local machine")
-    if sym6: selected_symptoms.append("Files converted to shortcuts / corrupted extensions")
+    selected = [s for s, checked in zip(
+        ["High CPU", "Pop-ups/Extensions", "Disabled Antivirus", "Terminal Flashes"], 
+        [s1, s2, s3, s4]
+    ) if checked]
     
-    if st.button("💻 Run PC Health Diagnostic", type="primary"):
-        if not selected_symptoms:
-            st.success("✅ No threat symptoms selected! Your computer appears healthy based on checked parameters.")
+    if st.button("Diagnose System", type="primary"):
+        if selected:
+            sys_prompt = "You are a PC Security Auditor. Give a concise diagnostic rating and 3 plain-English cleanup steps. Keep response under 100 words."
+            user_msg = [{"role": "user", "content": f"Symptoms detected: {', '.join(selected)}"}]
+            with st.spinner("Analyzing..."):
+                st.markdown(get_concise_response(sys_prompt, user_msg))
         else:
-            with st.spinner("Analyzing symptom combination..."):
-                pc_analysis = analyze_pc_health(selected_symptoms)
-                st.markdown(pc_analysis)
+            st.success("No threat symptoms selected. System appears clean!")
 
 # ==========================================
-# TAB 4: PREVENTION & HYGIENE SCORECARD
+# TAB 4: SAFETY SCORECARD
 # ==========================================
 with tab4:
-    st.subheader("Personal Cyber Safety Scorecard")
-    st.write("Evaluate your daily digital security habits to calculate your Cyber Safety Index.")
+    st.write("Check your active security habits:")
+    q1 = st.checkbox("Password Manager for unique passwords")
+    q2 = st.checkbox("2-Factor Authentication (2FA) enabled on primary accounts")
+    q3 = st.checkbox("OS and apps kept up to date")
     
-    q1 = st.checkbox("I use unique, complex passwords for every major account (or use a Password Manager).")
-    q2 = st.checkbox("I have Two-Factor Authentication (2FA/MFA) enabled on WhatsApp, Google, and Social Media.")
-    q3 = st.checkbox("My computer operating system, smartphone, and web browsers are up to date.")
-    q4 = st.checkbox("I never download pirated software, cracked apps, or attachments from unknown emails.")
-    q5 = st.checkbox("I regularly check active logged-in devices in my Google/WhatsApp settings.")
+    score = sum([q1, q2, q3]) * 33.33
+    st.metric("Security Index Score", f"{int(score)}%")
     
-    score = sum([q1, q2, q3, q4, q5]) * 20
-    
-    st.divider()
-    res_col1, res_col2 = st.columns([1, 2])
-    
-    with res_col1:
-        st.metric("Your Cyber Safety Index", f"{score}%")
-        if score == 100:
-            st.balloons()
-            st.success("🏆 Excellent Security Hygiene!")
-        elif score >= 60:
-            st.info("⚠️ Moderate Protection Level")
-        else:
-            st.error("🚨 High Vulnerability Risk")
-            
-    with res_col2:
-        st.markdown("### Recommendations to Reach 100%:")
-        if not q1:
-            st.write("- **Install a Password Manager:** Stop reusing passwords. Use tools like Bitwarden or 1Password.")
-        if not q2:
-            st.write("- **Turn on 2FA:** Enable App-based Authenticator (e.g., Google Authenticator) rather than SMS where possible.")
-        if not q3:
-            st.write("- **Enable Automatic Updates:** Keep your OS and browsers updated to patch known vulnerabilities.")
-        if not q4:
-            st.write("- **Avoid Cracks/KMS:** Pirated software is the #1 vector for infostealer malware.")
-        if not q5:
-            st.write("- **Audit Sessions:** Go to WhatsApp Settings -> Linked Devices and remove unfamiliar sessions.")
+    if score < 100:
+        st.info("Tip: Enable 2FA and unique passwords on all primary accounts to reach 100%.")
