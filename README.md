@@ -4,7 +4,7 @@ CyberGuard AI is an intelligent cybersecurity threat detection and incident resp
 
 ---
 
-## 🇵🇰 Hackathon Context & Real-World Pakistan Impact
+## PAK-ANGELS Hackathon Context & Real-World Pakistan Impact
 
 This project was developed as a **Mid-Week Capstone Project for the GenAI Community Program in Pakistan**.
 
